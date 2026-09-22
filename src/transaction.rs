@@ -3,12 +3,24 @@
 //! ([`reconcile`]), and drive it through activation/confirmation
 //! ([`activate`], [`finish`]).
 //!
-//! `Id` and `Target` are left generic on purpose (see the crate doc
-//! comment): `Id` is whatever a caller's own protocol uses to name a
-//! deployment/release (a string, a UUID, ...), `Target` is whatever the
-//! backend needs to know where an artifact goes (a slot label, a partition
-//! index, ...) -- this crate compares `Id`s for equality and otherwise
-//! never interprets either.
+//! Three type parameters, left generic on purpose (see the crate doc
+//! comment), and deliberately not collapsed into one:
+//!
+//! * `TxId` names the *transaction* -- a deployment/release identifier, in
+//!   a caller's own protocol vocabulary (a string, a UUID, ...). This is
+//!   what [`activate`] checks against.
+//! * `ArtifactId` names one artifact *within* a transaction (a kind:
+//!   firmware, a workload, ...) -- never the same thing as `TxId`, even in
+//!   v1 where a transaction holds exactly one artifact: a transaction
+//!   naming itself "release-42" does not make its one firmware artifact
+//!   *be* "release-42", and a future second artifact in that same
+//!   transaction needs its own identity that isn't a duplicate of the
+//!   transaction's.
+//! * `Target` is whatever the backend needs to know where an artifact goes
+//!   (a slot label, a partition index, ...).
+//!
+//! This crate compares `TxId`s (in `activate`) and otherwise never
+//! interprets any of the three.
 
 use alloc::vec::Vec;
 
@@ -17,38 +29,41 @@ use crate::error::Error;
 use crate::state::{Action, BackendOutcome, TransactionState};
 use crate::storage::TransactionMetadata;
 
-/// One artifact within a transaction: identity, size and digest (checked by
-/// [`crate::artifact::WriteSession::finish`] before this record is ever
-/// built) and whatever the backend needs to place it (`target`).
+/// One artifact within a transaction: its own identity (never the
+/// transaction's -- see the module doc comment), size and digest (checked
+/// by [`crate::artifact::WriteSession::finish`] before this record is ever
+/// built), and whatever the backend needs to place it (`target`).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArtifactRecord<Id, Target> {
-    pub id: Id,
+pub struct ArtifactRecord<ArtifactId, Target> {
+    pub id: ArtifactId,
     pub size: u64,
     pub digest: Digest,
     pub target: Target,
 }
 
-/// The whole staged transaction. `artifacts` is a `Vec` -- not a single
-/// field -- specifically so a multi-artifact transaction is a matter of
-/// pushing more entries, not a breaking change to this type; every function
-/// in this module that only handles one artifact today says so in its own
-/// doc comment, not by the shape of this struct.
+/// The whole staged transaction: its own identity (`id`), and `artifacts`
+/// -- a `Vec`, not a single field, specifically so a multi-artifact
+/// transaction is a matter of pushing more entries, not a breaking change
+/// to this type. Every function in this module that only handles one
+/// artifact today says so in its own doc comment, not by the shape of this
+/// struct.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TransactionRecord<Id, Target> {
+pub struct TransactionRecord<TxId, ArtifactId, Target> {
+    pub id: TxId,
     pub state: TransactionState,
-    pub artifacts: Vec<ArtifactRecord<Id, Target>>,
+    pub artifacts: Vec<ArtifactRecord<ArtifactId, Target>>,
 }
 
-impl<Id: Clone, Target: Clone> TransactionRecord<Id, Target> {
-    /// A freshly staged transaction of exactly one artifact -- the only
-    /// shape this crate's v1 orchestration ([`activate`]) accepts; a future
-    /// multi-artifact caller builds `artifacts` directly instead.
-    pub fn staged(artifact: ArtifactRecord<Id, Target>) -> Self {
-        TransactionRecord { state: TransactionState::Staged, artifacts: alloc::vec![artifact] }
+impl<TxId: Clone, ArtifactId: Clone, Target: Clone> TransactionRecord<TxId, ArtifactId, Target> {
+    /// A freshly staged transaction `id` of exactly one artifact -- the
+    /// only shape this crate's v1 orchestration ([`activate`]) accepts; a
+    /// future multi-artifact caller builds `artifacts` directly instead.
+    pub fn staged(id: TxId, artifact: ArtifactRecord<ArtifactId, Target>) -> Self {
+        TransactionRecord { id, state: TransactionState::Staged, artifacts: alloc::vec![artifact] }
     }
 
     fn with_state(&self, state: TransactionState) -> Self {
-        TransactionRecord { state, artifacts: self.artifacts.clone() }
+        TransactionRecord { id: self.id.clone(), state, artifacts: self.artifacts.clone() }
     }
 }
 
@@ -84,10 +99,10 @@ pub fn reconcile(staged: Option<TransactionState>, outcome: BackendOutcome, runn
 }
 
 /// Records the intent to activate the staged transaction: checks it is
-/// actually `Staged`, that `expected_id` names the artifact staged (a
+/// actually `Staged`, that `expected_id` names *the transaction* staged (a
 /// caller doesn't get to activate a different deployment than the one it
-/// asked to write), and durably commits the transition to `Activating`
-/// *before* returning.
+/// asked to write -- this compares `TxId`, never an artifact's own id),
+/// and durably commits the transition to `Activating` *before* returning.
 ///
 /// This only records intent with the metadata store -- it does not touch
 /// whatever backend actually switches the running target (that's outside
@@ -101,18 +116,24 @@ pub fn reconcile(staged: Option<TransactionState>, outcome: BackendOutcome, runn
 ///    automatically, since "best effort" here means the caller's own
 ///    failure-logging/degraded-state policy, which this crate has no
 ///    opinion on.
-pub fn activate<M, Id, Target>(metadata: &mut M, expected_id: &Id) -> Result<TransactionRecord<Id, Target>, Error<M::Error>>
+pub fn activate<M, TxId, ArtifactId, Target>(
+    metadata: &mut M,
+    expected_id: &TxId,
+) -> Result<TransactionRecord<TxId, ArtifactId, Target>, Error<M::Error>>
 where
-    M: TransactionMetadata<Record = TransactionRecord<Id, Target>>,
-    Id: Clone + PartialEq,
+    M: TransactionMetadata<Record = TransactionRecord<TxId, ArtifactId, Target>>,
+    TxId: Clone + PartialEq,
+    ArtifactId: Clone,
     Target: Clone,
 {
     let record = metadata.load().map_err(Error::Backend)?.ok_or(Error::NotStaged)?;
     if record.state != TransactionState::Staged {
         return Err(Error::NotStaged);
     }
-    let artifact = record.artifacts.first().ok_or(Error::NotStaged)?;
-    if &artifact.id != expected_id {
+    if record.artifacts.is_empty() {
+        return Err(Error::NotStaged);
+    }
+    if &record.id != expected_id {
         return Err(Error::IdentityMismatch);
     }
     let activating = record.with_state(TransactionState::Activating);
@@ -124,9 +145,9 @@ where
 /// this only after the backend's own confirmation has *durably* succeeded
 /// (outside this crate) -- never speculatively: a transaction cleared here
 /// is gone, there is no undo.
-pub fn finish<M, Id, Target>(metadata: &mut M) -> Result<(), Error<M::Error>>
+pub fn finish<M, TxId, ArtifactId, Target>(metadata: &mut M) -> Result<(), Error<M::Error>>
 where
-    M: TransactionMetadata<Record = TransactionRecord<Id, Target>>,
+    M: TransactionMetadata<Record = TransactionRecord<TxId, ArtifactId, Target>>,
 {
     metadata.commit(None).map_err(Error::Backend)
 }
@@ -135,9 +156,9 @@ where
 /// left over on the slot that's now confirmed running some other way) --
 /// same effect as [`finish`], named separately because the caller's reason
 /// for calling it (an [`Action::ClearStale`]) is not "we confirmed this".
-pub fn clear_stale<M, Id, Target>(metadata: &mut M) -> Result<(), Error<M::Error>>
+pub fn clear_stale<M, TxId, ArtifactId, Target>(metadata: &mut M) -> Result<(), Error<M::Error>>
 where
-    M: TransactionMetadata<Record = TransactionRecord<Id, Target>>,
+    M: TransactionMetadata<Record = TransactionRecord<TxId, ArtifactId, Target>>,
 {
     metadata.commit(None).map_err(Error::Backend)
 }
@@ -153,18 +174,26 @@ mod tests {
         Digest([byte; 32])
     }
 
-    fn artifact(id: &str) -> ArtifactRecord<String, String> {
-        ArtifactRecord { id: id.to_string(), size: 100, digest: digest(0xAB), target: "slot-b".to_string() }
+    /// An artifact record, deliberately with an `id` ("firmware") that
+    /// never looks like a transaction id ("dep-1", "dep-2", ...) below --
+    /// proving `activate`'s identity check is against `TransactionRecord::id`,
+    /// never against an artifact's own id.
+    fn firmware() -> ArtifactRecord<String, String> {
+        ArtifactRecord { id: "firmware".to_string(), size: 100, digest: digest(0xAB), target: "slot-b".to_string() }
+    }
+
+    fn staged(tx_id: &str) -> TransactionRecord<String, String, String> {
+        TransactionRecord::staged(tx_id.to_string(), firmware())
     }
 
     struct MockMetadata {
-        record: Option<TransactionRecord<String, String>>,
+        record: Option<TransactionRecord<String, String, String>>,
         fail_commit: bool,
     }
 
     impl TransactionMetadata for MockMetadata {
         type Error = &'static str;
-        type Record = TransactionRecord<String, String>;
+        type Record = TransactionRecord<String, String, String>;
 
         fn load(&mut self) -> Result<Option<Self::Record>, Self::Error> {
             Ok(self.record.clone())
@@ -187,25 +216,25 @@ mod tests {
 
     #[test]
     fn activate_refuses_a_mismatched_identity_and_leaves_the_record_untouched() {
-        let staged = TransactionRecord::staged(artifact("dep-1"));
-        let mut meta = MockMetadata { record: Some(staged.clone()), fail_commit: false };
+        let record = staged("dep-1");
+        let mut meta = MockMetadata { record: Some(record.clone()), fail_commit: false };
         assert_eq!(activate(&mut meta, &"dep-2".to_string()), Err(Error::IdentityMismatch));
         // A refused activation must not have touched the record.
-        assert_eq!(meta.load().unwrap(), Some(staged));
+        assert_eq!(meta.load().unwrap(), Some(record));
     }
 
     #[test]
     fn activate_commits_the_transition_and_returns_it() {
-        let staged = TransactionRecord::staged(artifact("dep-1"));
-        let mut meta = MockMetadata { record: Some(staged), fail_commit: false };
+        let mut meta = MockMetadata { record: Some(staged("dep-1")), fail_commit: false };
         let activating = activate(&mut meta, &"dep-1".to_string()).unwrap();
         assert_eq!(activating.state, TransactionState::Activating);
+        assert_eq!(activating.id, "dep-1");
         assert_eq!(meta.load().unwrap().unwrap().state, TransactionState::Activating);
     }
 
     #[test]
     fn activate_refuses_an_already_activating_transaction() {
-        let mut record = TransactionRecord::staged(artifact("dep-1"));
+        let mut record = staged("dep-1");
         record.state = TransactionState::Activating;
         let mut meta = MockMetadata { record: Some(record), fail_commit: false };
         assert_eq!(activate(&mut meta, &"dep-1".to_string()), Err(Error::NotStaged));
@@ -213,10 +242,10 @@ mod tests {
 
     #[test]
     fn activate_propagates_a_backend_commit_failure_without_changing_the_record() {
-        let staged = TransactionRecord::staged(artifact("dep-1"));
-        let mut meta = MockMetadata { record: Some(staged.clone()), fail_commit: true };
+        let record = staged("dep-1");
+        let mut meta = MockMetadata { record: Some(record.clone()), fail_commit: true };
         assert_eq!(activate(&mut meta, &"dep-1".to_string()), Err(Error::Backend("simulated backend failure")));
-        assert_eq!(meta.load().unwrap(), Some(staged));
+        assert_eq!(meta.load().unwrap(), Some(record));
     }
 
     #[test]
@@ -226,19 +255,19 @@ mod tests {
         // reverts the metadata record to its pre-activation form so a retry
         // stays possible -- this crate provides the building block, not the
         // policy of when to use it.
-        let staged = TransactionRecord::staged(artifact("dep-1"));
-        let mut meta = MockMetadata { record: Some(staged.clone()), fail_commit: false };
+        let record = staged("dep-1");
+        let mut meta = MockMetadata { record: Some(record.clone()), fail_commit: false };
         let activating = activate(&mut meta, &"dep-1".to_string()).unwrap();
         assert_eq!(meta.load().unwrap().unwrap().state, TransactionState::Activating);
 
         let reverted = activating.with_state(TransactionState::Staged);
         meta.commit(Some(&reverted)).unwrap();
-        assert_eq!(meta.load().unwrap(), Some(staged));
+        assert_eq!(meta.load().unwrap(), Some(record));
     }
 
     #[test]
     fn finish_clears_the_record() {
-        let mut record = TransactionRecord::staged(artifact("dep-1"));
+        let mut record = staged("dep-1");
         record.state = TransactionState::Activating;
         let mut meta = MockMetadata { record: Some(record), fail_commit: false };
         finish(&mut meta).unwrap();
@@ -247,8 +276,7 @@ mod tests {
 
     #[test]
     fn clear_stale_also_clears_the_record() {
-        let staged = TransactionRecord::staged(artifact("dep-1"));
-        let mut meta = MockMetadata { record: Some(staged), fail_commit: false };
+        let mut meta = MockMetadata { record: Some(staged("dep-1")), fail_commit: false };
         clear_stale(&mut meta).unwrap();
         assert_eq!(meta.load().unwrap(), None);
     }
