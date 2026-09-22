@@ -36,4 +36,13 @@ pub enum Error<E> {
     /// requested transition -- a boot-chain/transaction anomaly, never
     /// papered over.
     NoTransition,
+    /// [`crate::storage::ArtifactStorage::write`] or `finish` returned a
+    /// durability watermark this crate does not trust: one that moved
+    /// backward, or that claims more bytes durable than it was just
+    /// offered. `old_durable <= new_durable <= old_durable +
+    /// pending.len()` is checked on every call -- a backend is never taken
+    /// on faith past that bound, release build or not (this is a real
+    /// check, not a `debug_assert`, specifically because it would
+    /// otherwise vanish from exactly the build this crate ships in).
+    InvalidDurabilityReport,
 }

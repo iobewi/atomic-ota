@@ -20,6 +20,14 @@
 //! decides, on every call, how much of what it's offered it can make
 //! durable right now, and this module keeps whatever it didn't take (the
 //! *pending* tail) in RAM until the backend says otherwise.
+//!
+//! That backend is not trusted on faith to keep its side of this: every
+//! `write`/`finish` reply is checked, as a real, non-optimized-out error
+//! ([`Error::InvalidDurabilityReport`]), against
+//! `old_durable <= new_durable <= old_durable + pending.len()`. A backend
+//! that never advances `durable` at all is legal -- `pending` then grows,
+//! but only up to `total` (bounded by the same check `append` already
+//! makes on `received`), never past it and never without bound.
 
 use alloc::vec::Vec;
 use sha2::{Digest as _, Sha256};
@@ -146,6 +154,17 @@ impl<S: ArtifactStorage> WriteSession<S> {
     /// Appends `data`, offering the accumulated undurable tail to the
     /// backend and hashing exactly whatever portion of it the backend just
     /// made durable.
+    ///
+    /// A backend that never advances `durable` at all is not rejected here
+    /// -- it is a legitimate (if pathological) way to answer `write` -- but
+    /// note what that costs: `pending` keeps every byte offered and never
+    /// durable, so it grows up to `total` in the worst case. This crate
+    /// bounds that growth by `total` (via the `TooLarge` check below, which
+    /// still applies) rather than by anything smaller; a backend that wants
+    /// a tighter bound enforces its own (a real flash backend durables at
+    /// least every physical unit, keeping `pending` far under `total` in
+    /// practice) -- seeing `write` called at all is not a promise of
+    /// progress on its own.
     pub fn append(&mut self, data: &[u8]) -> Result<(), Error<S::Error>> {
         let end = self.received.checked_add(data.len() as u64).ok_or(Error::TooLarge)?;
         if end > self.total {
@@ -155,7 +174,8 @@ impl<S: ArtifactStorage> WriteSession<S> {
         self.received = end;
 
         let new_durable = self.storage.write(self.durable, &self.pending).map_err(Error::Backend)?;
-        self.advance(new_durable)
+        self.advance(new_durable)?;
+        Ok(())
     }
 
     /// Closes the session: flushes whatever is left buffered (a backend's
@@ -165,11 +185,16 @@ impl<S: ArtifactStorage> WriteSession<S> {
     /// doc comment's invariant on never activating an unverified artifact.
     pub fn finish(mut self) -> Result<Committed, Error<S::Error>> {
         if !self.pending.is_empty() {
+            let expected = self.durable + self.pending.len() as u64;
             let new_durable = self.storage.finish(self.durable, &self.pending).map_err(Error::Backend)?;
-            if new_durable != self.durable + self.pending.len() as u64 {
+            self.advance(new_durable)?;
+            if self.durable != expected {
+                // `advance` already refused a `new_durable` past `expected`
+                // (that's `InvalidDurabilityReport`); reaching here means it
+                // was short of it, i.e. `finish` didn't actually consume
+                // everything it was handed.
                 return Err(Error::Incomplete);
             }
-            self.advance(new_durable)?;
         }
         if self.durable != self.total {
             return Err(Error::Incomplete);
@@ -182,15 +207,22 @@ impl<S: ArtifactStorage> WriteSession<S> {
     }
 
     /// Hashes the newly-durable prefix of `pending` and drains it, moving
-    /// `durable` forward to `new_durable`.
+    /// `durable` forward to `new_durable` -- after checking, as a real
+    /// error and not a `debug_assert` (see [`Error::InvalidDurabilityReport`]),
+    /// that the backend's claim actually fits what it was offered:
+    /// `self.durable <= new_durable <= self.durable + self.pending.len()`.
     fn advance(&mut self, new_durable: u64) -> Result<(), Error<S::Error>> {
-        debug_assert!(new_durable >= self.durable, "durability must never move backward");
-        let consumed = new_durable.saturating_sub(self.durable) as usize;
-        debug_assert!(consumed <= self.pending.len(), "backend claimed more durable bytes than it was offered");
-        let consumed = consumed.min(self.pending.len());
+        if new_durable < self.durable {
+            return Err(Error::InvalidDurabilityReport);
+        }
+        let consumed = new_durable - self.durable;
+        if consumed > self.pending.len() as u64 {
+            return Err(Error::InvalidDurabilityReport);
+        }
+        let consumed = consumed as usize;
         self.hasher.update(&self.pending[..consumed]);
         self.pending.drain(..consumed);
-        self.durable += consumed as u64;
+        self.durable = new_durable;
         Ok(())
     }
 }
@@ -336,5 +368,84 @@ mod tests {
         let mut session = WriteSession::begin(backend, 4, wrong);
         session.append(&[1, 2, 3, 4]).unwrap();
         assert_eq!(session.finish(), Err(Error::DigestMismatch));
+    }
+
+    /// A backend that answers `write`/`finish` with whatever watermark the
+    /// test tells it to, regardless of what it was actually offered --
+    /// standing in for a buggy or adversarial implementation of the trait,
+    /// to prove the *engine* -- not backend goodwill -- is what keeps
+    /// `old_durable <= new_durable <= old_durable + pending.len()`.
+    struct LyingBackend {
+        next_durable: u64,
+    }
+
+    impl ArtifactStorage for LyingBackend {
+        type Error = ();
+        fn write(&mut self, _durable_offset: u64, _pending: &[u8]) -> Result<u64, Self::Error> {
+            Ok(self.next_durable)
+        }
+        fn finish(&mut self, _durable_offset: u64, _pending: &[u8]) -> Result<u64, Self::Error> {
+            Ok(self.next_durable)
+        }
+    }
+
+    #[test]
+    fn a_backend_claiming_more_durable_than_it_was_offered_is_rejected() {
+        let backend = LyingBackend { next_durable: 1_000_000 };
+        let mut session = WriteSession::begin(backend, 100, digest_of(&[0u8; 100]));
+        assert_eq!(session.append(&[0u8; 10]), Err(Error::InvalidDurabilityReport));
+    }
+
+    #[test]
+    fn a_backend_reporting_durability_moving_backward_is_rejected() {
+        let backend = LyingBackend { next_durable: 8 };
+        let mut session = WriteSession::begin(backend, 100, digest_of(&[0u8; 100]));
+        // Legitimately advances durable to 8 (offered 8, claims exactly 8)...
+        session.append(&[0u8; 8]).unwrap();
+        assert_eq!(session.durable(), 8);
+        // ... then the backend lies and claims durability *regressed*.
+        session.storage.next_durable = 4;
+        assert_eq!(session.append(&[0u8; 8]), Err(Error::InvalidDurabilityReport));
+    }
+
+    /// A backend that never durables a single byte until `finish`: legal
+    /// (nothing requires progress on every call), and bounded -- `pending`
+    /// grows only up to `total`, never past it, because `append` itself
+    /// refuses to accept more than `total` regardless of what the backend
+    /// does with it.
+    struct NeverProgressesUntilFinish {
+        committed: alloc::vec::Vec<u8>,
+    }
+
+    impl ArtifactStorage for NeverProgressesUntilFinish {
+        type Error = &'static str;
+        fn write(&mut self, durable_offset: u64, _pending: &[u8]) -> Result<u64, Self::Error> {
+            Ok(durable_offset) // no progress, ever, until finish
+        }
+        fn finish(&mut self, durable_offset: u64, pending: &[u8]) -> Result<u64, Self::Error> {
+            assert_eq!(durable_offset, self.committed.len() as u64);
+            self.committed.extend_from_slice(pending);
+            Ok(self.committed.len() as u64)
+        }
+    }
+
+    #[test]
+    fn a_backend_that_never_progresses_still_completes_correctly_at_finish() {
+        let data: alloc::vec::Vec<u8> = (0u8..=200).collect();
+        let expected = digest_of(&data);
+        let backend = NeverProgressesUntilFinish { committed: vec![] };
+        let mut session = WriteSession::begin(backend, data.len() as u64, expected);
+        for chunk in data.chunks(17) {
+            session.append(chunk).unwrap();
+            // Never durable early: RAM usage is bounded by `total`, not
+            // unbounded, but it does grow -- exactly what a caller building
+            // a tighter-than-`total` bound has to do with its own backend,
+            // not something this crate silently assumes for it.
+            assert_eq!(session.durable(), 0);
+        }
+        assert_eq!(session.received(), data.len() as u64);
+        let committed = session.finish().unwrap();
+        assert_eq!(committed.digest, expected);
+        assert_eq!(committed.size, data.len() as u64);
     }
 }
