@@ -62,7 +62,13 @@ impl<TxId: Clone, ArtifactId: Clone, Target: Clone> TransactionRecord<TxId, Arti
         TransactionRecord { id, state: TransactionState::Staged, artifacts: alloc::vec![artifact] }
     }
 
-    fn with_state(&self, state: TransactionState) -> Self {
+    /// The same transaction, with its state replaced -- e.g. for a caller
+    /// reverting a returned `Activating` record back to `Staged` after its
+    /// own backend switch fails (see [`activate`]'s doc comment). Every
+    /// field here is already `pub`, so this is equivalent to a struct-update
+    /// literal (`TransactionRecord { state: ..., ..record }`); it exists
+    /// only for that call to read as intent rather than field-copying.
+    pub fn with_state(&self, state: TransactionState) -> Self {
         TransactionRecord { id: self.id.clone(), state, artifacts: self.artifacts.clone() }
     }
 }
