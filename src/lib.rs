@@ -13,10 +13,12 @@
 
 extern crate alloc;
 
+pub mod artifact;
 pub mod error;
 pub mod state;
 pub mod storage;
 
+pub use artifact::{Committed, Digest, ResumePlan, WriteSession, is_complete, resume_plan};
 pub use error::Error;
 pub use state::{Action, BackendOutcome, TransactionState};
 pub use storage::{ArtifactStorage, TransactionMetadata};
