@@ -22,8 +22,11 @@ pub enum Error<E> {
     Busy,
     /// The digest computed while writing doesn't match the one the session
     /// was opened with. Never a post-hoc re-read: see [`crate::artifact`]'s
-    /// doc comment for why that distinction is load-bearing.
-    DigestMismatch,
+    /// doc comment for why that distinction is load-bearing. Carries the
+    /// digest that *was* computed (the caller already has the expected
+    /// one) -- a mismatch is exactly the failure a caller most needs to
+    /// log both sides of to diagnose (corrupted transit vs. a wrong file).
+    DigestMismatch(crate::artifact::Digest),
     /// The session (or the final flush) ended short of the declared size.
     Incomplete,
     /// There is nothing staged to act on (activate/confirm/reject with an

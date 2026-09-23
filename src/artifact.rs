@@ -210,7 +210,7 @@ impl WriteSession {
         }
         let digest = Digest(self.hasher.finalize().into());
         if digest != self.expected_digest {
-            return Err(Error::DigestMismatch);
+            return Err(Error::DigestMismatch(digest));
         }
         Ok(Committed { size: self.durable, digest })
     }
@@ -376,7 +376,10 @@ mod tests {
         let wrong = digest_of(b"not what actually gets written");
         let mut session = WriteSession::begin(4, wrong);
         session.append(&mut backend, &[1, 2, 3, 4]).unwrap();
-        assert_eq!(session.finish(&mut backend), Err(Error::DigestMismatch));
+        // The error carries what was *actually* computed, not the expected
+        // one the caller already has -- proves it's the real digest of
+        // `[1,2,3,4]`, not e.g. `wrong` echoed back or a placeholder.
+        assert_eq!(session.finish(&mut backend), Err(Error::DigestMismatch(digest_of(&[1, 2, 3, 4]))));
     }
 
     /// A backend that answers `write`/`finish` with whatever watermark the
