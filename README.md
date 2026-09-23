@@ -1,7 +1,9 @@
 # atomic-ota
 
-A transactional, resumable, A/B-safe OTA engine core. `no_std` (+ `alloc`),
-and independent of any MCU, HAL, async runtime, transport protocol,
+A generic `no_std` Rust OTA engine providing transactional state
+management, resumable streaming writes, durable-progress tracking, digest
+verification, activation reconciliation and rollback semantics --
+independent of any MCU, HAL, async runtime, transport protocol,
 deployment control plane, or bootloader's on-flash format.
 
 ```
@@ -13,13 +15,34 @@ target, no hardware.
 
 ## Status
 
-Extraction in progress from
-[`embewi-agent-esp`](https://github.com/iobewi/embewi-agent-esp), the first
-real user of this engine. The pure core (this repo) is implemented and
-tested; ESP32 reintegration (a backend adapter living in
-`embewi-agent-esp`, implementing the traits below against `esp-storage`
-and NVS) has not happened yet. Nothing here is a stable API: every public
-enum is `#[non_exhaustive]`.
+Extracted from, and integrated back into,
+[`embewi-agent-esp`](https://github.com/iobewi/embewi-agent-esp) --
+currently this crate's only real consumer. Both halves this crate owns are
+hardware-gated, not just reasoned through: the transaction state machine
+(tag `atomic-ota-step3-pass` on that repo) and the streaming write session
+(tag `atomic-ota-step4-pass`), each verified on real ESP32-C3 silicon
+through a full write -> reboot -> activate -> confirm -> re-alternate
+cycle. Nothing here is a stable API yet: every public enum is
+`#[non_exhaustive]`, and every signature should be expected to move once a
+second real consumer -- not yet built -- exercises this abstraction from a
+different angle (see "Designed for" below on why that, not more design
+work in the abstract, is deliberately the next real test of it).
+
+**Current:**
+- single-artifact transactions, executed end to end on real hardware
+- a platform-agnostic core, with no ESP32/`esp-hal`/Embassy/HTTP/TLS/
+  bootloader-format dependency of its own
+- storage and metadata backends supplied entirely by the caller
+  (`ArtifactStorage`, `TransactionMetadata`) -- this repo ships none
+
+**Designed for:**
+- multi-artifact transactions -- `TransactionRecord`'s `artifacts` is
+  already a list, and every function that only handles one artifact today
+  says so in its own doc comment, not in the shape of the type
+
+**Not yet implemented:**
+- atomic activation of multiple artifacts as one unit
+- anything beyond what its one real consumer has needed so far
 
 ## What this crate owns
 
