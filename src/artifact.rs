@@ -202,11 +202,11 @@ impl WriteSession {
                 // (that's `InvalidDurabilityReport`); reaching here means it
                 // was short of it, i.e. `finish` didn't actually consume
                 // everything it was handed.
-                return Err(Error::Incomplete);
+                return Err(Error::Incomplete { durable: self.durable });
             }
         }
         if self.durable != self.total {
-            return Err(Error::Incomplete);
+            return Err(Error::Incomplete { durable: self.durable });
         }
         let digest = Digest(self.hasher.finalize().into());
         if digest != self.expected_digest {
@@ -367,7 +367,9 @@ mod tests {
         let mut backend = UnitBackend { unit: 4, committed: vec![] };
         let mut session = WriteSession::begin(10, digest_of(&[0u8; 10]));
         session.append(&mut backend, &[0u8; 5]).unwrap();
-        assert_eq!(session.finish(&mut backend), Err(Error::Incomplete));
+        // 4 bytes durable from `append` (one whole unit), `finish` flushes
+        // the last 1 -- 5 of 10 declared, reported back exactly.
+        assert_eq!(session.finish(&mut backend), Err(Error::Incomplete { durable: 5 }));
     }
 
     #[test]

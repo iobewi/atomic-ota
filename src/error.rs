@@ -28,7 +28,11 @@ pub enum Error<E> {
     /// log both sides of to diagnose (corrupted transit vs. a wrong file).
     DigestMismatch(crate::artifact::Digest),
     /// The session (or the final flush) ended short of the declared size.
-    Incomplete,
+    /// Carries how many bytes were actually durable when that was
+    /// detected -- the other half of the pair a "session ended short"
+    /// diagnostic needs (the declared size is whatever the caller already
+    /// opened the session with).
+    Incomplete { durable: u64 },
     /// There is nothing staged to act on (activate/confirm/reject with an
     /// empty or already-resolved transaction).
     NotStaged,
