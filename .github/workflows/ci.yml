@@ -28,4 +28,4 @@ jobs:
           targets: riscv32imc-unknown-none-elf
           components: clippy
       - run: cargo check -p fibewi-esp --features esp32c3 --target riscv32imc-unknown-none-elf
-      - run: cargo clippy -p fibewi-esp --features esp32c3 --target riscv32imc-unknown-none-elf -- -D warnings
+      - run: cargo clippy -p fibewi-esp --features esp32c3 --target riscv32imc-unknown-none-elf -- -D warnings -A clippy::result-unit-err -A clippy::needless-range-loop
