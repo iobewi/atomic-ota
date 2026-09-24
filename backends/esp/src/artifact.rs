@@ -1,4 +1,4 @@
-//! ESP-specific flash backend for [`atomic_ota`].
+//! ESP-specific flash backend for [`fibewi`].
 //!
 //! This crate owns only mechanics that are reusable across ESP firmware:
 //! locating ESP-IDF app partitions and turning a NOR flash region into an

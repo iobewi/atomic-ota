@@ -1,0 +1,31 @@
+name: Rust
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88.0"
+          components: clippy
+      - run: cargo test -p fibewi --all-targets
+      - run: cargo test -p fibewi-esp --all-targets
+      - run: cargo clippy -p fibewi --lib -- -D warnings
+      - run: cargo clippy -p fibewi-esp --lib -- -D warnings -A clippy::result-unit-err -A clippy::needless-range-loop
+
+  esp32c3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88.0"
+          targets: riscv32imc-unknown-none-elf
+          components: clippy
+      - run: cargo check -p fibewi-esp --features esp32c3 --target riscv32imc-unknown-none-elf
+      - run: cargo clippy -p fibewi-esp --features esp32c3 --target riscv32imc-unknown-none-elf -- -D warnings
