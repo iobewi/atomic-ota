@@ -1,14 +1,18 @@
 [package]
-edition      = "2024"
-name         = "atomic-ota"
+edition = "2024"
+name = "fibewi"
 rust-version = "1.88"
-version      = "0.1.0"
-license      = "MIT"
-description  = "Transactional, resumable, A/B-safe OTA engine core -- no_std, no HTTP, no bootloader format, no MCU tie-in."
+version = "0.1.0"
+license = "MIT"
+description = "Transactional firmware update core with resumable writes and restart-safe reconciliation."
+repository = "https://github.com/iobewi/fibewi"
+readme = "README.md"
+
+[workspace]
+members = [".", "backends/esp"]
+resolver = "3"
 
 [dependencies]
-# Software SHA-256, pure Rust, no_std -- same crate and same reasoning
-# `embewi-boot-core` already uses for its own digest work.
 sha2 = { version = "0.10", default-features = false }
 
 [dev-dependencies]
