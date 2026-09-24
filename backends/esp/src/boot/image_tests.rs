@@ -219,6 +219,7 @@ fn full_needs_a_hash_and_a_dead_flash_is_an_error_not_a_pass() {
 }
 
 #[test]
+#[ignore = "exhaustive corruption sweep; run from the exhaustive CI job"]
 fn any_single_byte_flip_in_the_hashed_region_is_caught_by_full() {
     let image = aligned_builder().build();
     let hashed = image.len() - 32;
@@ -238,6 +239,7 @@ fn any_single_byte_flip_in_the_hashed_region_is_caught_by_full() {
 /// Whatever garbage the headers hold, an accepted image never has a segment where the
 /// bootloader must not be written.
 #[test]
+#[ignore = "60k mutation sweep; run from the exhaustive CI job"]
 fn accepted_images_never_overlap_the_bootloader_or_leave_the_map() {
     let image = aligned_builder().build();
     let mut rng = 0x1234_5678_9ABC_DEF0u64;
