@@ -1,4 +1,4 @@
-use crate::image::*;
+use super::image::*;
 use sha2::{Digest, Sha256};
 
 const MAP: MemoryMap = MemoryMap::ESP32C3;
