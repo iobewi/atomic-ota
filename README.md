@@ -31,16 +31,18 @@ bootloader formats, or application configuration.
 
 `backends/esp` owns ESP-specific firmware mechanics:
 
-- ESP-IDF `ota_0` / `ota_1` partition discovery;
-- NOR-flash erase/program mechanics for FiBeWI artifacts;
+- mapping FiBeWI `ota_0` / `ota_1` slots onto partitions located by `esp-storage-manager`;
+- FiBeWI artifact buffering/writes over the common ESP raw-storage primitives;
 - the EWBT transactional `otadata` format and its power-cut-safe state machine;
 - ESP application-image structural/checksum/SHA-256 validation.
 
 The update transaction state and the boot trust state remain separate state
 machines even though they now live in the same repository.
 
-The ESP backend still does not own application transaction metadata, NVS
-configuration, HTTP/TLS, or deployment policy.
+The ESP backend still does not own the physical flash capability, generic ESP
+partition-table/raw erase primitives, application transaction metadata, NVS
+configuration, HTTP/TLS, or deployment policy. The common hardware storage
+layer is `esp-storage-manager`.
 
 ## Tests
 
