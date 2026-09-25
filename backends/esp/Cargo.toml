@@ -15,11 +15,13 @@ esp32c3 = [
   "dep:embedded-storage",
   "dep:esp-bootloader-esp-idf",
   "esp-bootloader-esp-idf/esp32c3",
+  "esp-flash-access/esp32c3",
 ]
 esp32s3 = [
   "dep:embedded-storage",
   "dep:esp-bootloader-esp-idf",
   "esp-bootloader-esp-idf/esp32s3",
+  "esp-flash-access/esp32s3",
 ]
 
 [dependencies]
@@ -27,3 +29,4 @@ fibewi = { path = "../.." }
 sha2 = { version = "0.10", default-features = false }
 embedded-storage = { version = "0.3.1", optional = true }
 esp-bootloader-esp-idf = { version = "0.5.0", default-features = false, optional = true }
+esp-flash-access = { git = "https://github.com/iobewi/esp-storage-manager", rev = "cb99450b87187eb266fa2636a22d4c7562b20c7b" }
