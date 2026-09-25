@@ -31,7 +31,7 @@ bootloader formats, or application configuration.
 
 `backends/esp` owns ESP-specific firmware mechanics:
 
-- mapping FiBeWI `ota_0` / `ota_1` slots onto partitions located by `esp-storage-manager`;
+- mapping FiBeWI `ota_0` / `ota_1` slots onto partitions located by `espbewi`;
 - FiBeWI artifact buffering/writes over the common ESP raw-storage primitives;
 - the EWBT transactional `otadata` format and its power-cut-safe state machine;
 - ESP application-image structural/checksum/SHA-256 validation.
@@ -42,7 +42,7 @@ machines even though they now live in the same repository.
 The ESP backend still does not own the physical flash capability, generic ESP
 partition-table/raw erase primitives, application transaction metadata, NVS
 configuration, HTTP/TLS, or deployment policy. The common hardware storage
-layer is `esp-storage-manager`.
+layer is `espbewi`.
 
 ## Tests
 
