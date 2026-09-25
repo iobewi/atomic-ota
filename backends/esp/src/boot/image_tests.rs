@@ -1,7 +1,8 @@
 use super::image::*;
+use espbewi_platform::MemoryMap;
 use sha2::{Digest, Sha256};
 
-const MAP: MemoryMap = MemoryMap::ESP32C3;
+const MAP: MemoryMap = espbewi_platform::chips::esp32c3::BOOT_MEMORY_MAP;
 const PART_OFFSET: u32 = 0x20000;
 const PART_SIZE: u32 = 0x180000;
 
