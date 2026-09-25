@@ -69,3 +69,12 @@ generic/platform boundary explicit.
 ## License
 
 MIT.
+
+## ESP second-stage bootloader
+
+`bootloader/esp32c3` contains the FiBeWI-owned ESP32-C3 second-stage bootloader.
+It consumes the pure `fibewi-esp::boot` decision/image-validation core and performs
+the ROM flash, MMU/cache, RAM-load and final jump operations on hardware.
+
+Product repositories provide their partition table and factory packaging; they do
+not own a separate boot state machine or bootloader implementation.
