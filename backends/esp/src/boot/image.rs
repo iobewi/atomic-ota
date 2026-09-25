@@ -16,7 +16,7 @@
 //! then padding, one checksum byte (XOR of all segment data, seed 0xEF) as the
 //! last byte of a 16-byte block, then optionally a SHA-256 of everything before it.
 //! ```
-use core::ops::Range;
+use espbewi_platform::MemoryMap;
 use sha2::{Digest, Sha256};
 
 pub const MAX_SEGMENTS: usize = 16;
@@ -25,45 +25,6 @@ const SEGMENT_HEADER_LEN: u32 = 8;
 const MAGIC: u8 = 0xE9;
 const CHECKSUM_SEED: u8 = 0xEF;
 const HASH_LEN: u32 = 32;
-
-/// The chip-specific facts the bootloader validates against.
-#[derive(Clone, Debug)]
-pub struct MemoryMap {
-    pub chip_id: u16,
-    /// Flash-mapped through the MMU.
-    pub drom: Range<u32>,
-    pub irom: Range<u32>,
-    /// Internal SRAM, instruction-bus alias, and its data-bus alias.
-    pub iram: Range<u32>,
-    pub dram: Range<u32>,
-    pub rtc: Range<u32>,
-    /// `iram - sram_alias_offset == dram`.
-    pub sram_alias_offset: u32,
-    /// Memory the bootloader (or the ROM) is using while it loads, in data-bus
-    /// addresses: no segment may reach it.
-    pub boot_window: Range<u32>,
-    /// MMU page size: a flash-mapped segment's offset within a page must match its address's.
-    pub mmu_page: u32,
-}
-
-impl MemoryMap {
-    /// ESP32-C3, with the window `embewi-boot`'s linker script uses (`boot/boot.x`).
-    pub const ESP32C3: MemoryMap = MemoryMap {
-        chip_id: 0x0005,
-        drom: 0x3C00_0000..0x3C80_0000,
-        irom: 0x4200_0000..0x4280_0000,
-        iram: 0x4037_C000..0x403E_0000,
-        dram: 0x3FC8_0000..0x3FCE_0000,
-        rtc: 0x5000_0000..0x5000_2000,
-        sram_alias_offset: 0x0070_0000,
-        boot_window: 0x3FCC_B000..0x3FCE_0000,
-        mmu_page: 0x1_0000,
-    };
-
-    fn is_flash_mapped(&self, addr: u32) -> bool {
-        self.drom.contains(&addr) || self.irom.contains(&addr)
-    }
-}
 
 /// How much of the image is read to decide.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
