@@ -35,7 +35,7 @@
 
 use fibewi_esp::boot as boot_core;
 
-use boot_core::image::{self, MemoryMap, Verify};
+use boot_core::image::{self, Verify};
 use boot_core::{BLANK, Boot, Decoded, ENTRY_SIZE, Halt, Op, Raw, Write, decode, plan_boot};
 use esp_println::Printer;
 
@@ -86,7 +86,7 @@ const SUBTYPE_OTADATA: u8 = 0x00;
 const SECTOR: u32 = 0x1000;
 const SLOT_COUNT: u8 = 2;
 
-const MAP: MemoryMap = MemoryMap::ESP32C3;
+const MAP: espbewi_platform::MemoryMap = espbewi_platform::chips::esp32c3::BOOT_MEMORY_MAP;
 
 // --- ROM functions (esp32c3.rom.ld, resolved by esp-rom-sys) ---------------
 
