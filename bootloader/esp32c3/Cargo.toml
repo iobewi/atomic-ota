@@ -16,7 +16,8 @@ path = "src/main.rs"
 esp-hal = { version = "~1.1.0", features = ["esp32c3"] }
 esp-println = { version = "0.17.0", features = ["esp32c3"] }
 fibewi-esp = { path = "../../backends/esp" }
-espbewi-platform = { git = "https://github.com/iobewi/espbewi", rev = "9e92a71121210e6e918406b6bb7464f57badc3a3", package = "espbewi-platform" }
+espbewi-boot = { git = "https://github.com/iobewi/espbewi", rev = "213c44228c7e24ed62a20bbaab3a822c6cdf6506", package = "espbewi-boot", features = ["esp32c3"] }
+espbewi-platform = { git = "https://github.com/iobewi/espbewi", rev = "213c44228c7e24ed62a20bbaab3a822c6cdf6506", package = "espbewi-platform" }
 
 [profile.dev]
 opt-level = "s"
