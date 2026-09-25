@@ -509,13 +509,22 @@ version = "0.1.0"
 dependencies = [
  "esp-hal",
  "esp-println",
+ "espbewi-boot",
  "espbewi-platform",
  "fibewi-esp",
 ]
 [[package]]
+name = "espbewi-boot"
+version = "0.1.0"
+source = "git+https://github.com/iobewi/espbewi?rev=213c44228c7e24ed62a20bbaab3a822c6cdf6506#213c44228c7e24ed62a20bbaab3a822c6cdf6506"
+dependencies = [
+ "espbewi-platform",
+]
+
+[[package]]
 name = "espbewi-platform"
 version = "0.1.0"
-source = "git+https://github.com/iobewi/espbewi?rev=9e92a71121210e6e918406b6bb7464f57badc3a3#9e92a71121210e6e918406b6bb7464f57badc3a3"
+source = "git+https://github.com/iobewi/espbewi?rev=213c44228c7e24ed62a20bbaab3a822c6cdf6506#213c44228c7e24ed62a20bbaab3a822c6cdf6506"
 
 [[package]]
 name = "fnv"
