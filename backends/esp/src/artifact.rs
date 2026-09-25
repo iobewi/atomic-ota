@@ -2,7 +2,7 @@
 //!
 //! This crate adapts FiBeWI firmware semantics to ESP storage. Generic ESP
 //! partition-table access and raw erase mechanics are delegated to
-//! `esp-storage-manager`; this module keeps FiBeWI-specific slot mapping and
+//! `espbewi`; this module keeps FiBeWI-specific slot mapping and
 //! the [`fibewi::ArtifactStorage`] erase-block buffering contract.
 //!
 //! It deliberately does **not** own:
@@ -19,7 +19,7 @@ use embedded_storage::nor_flash::NorFlash;
 use esp_bootloader_esp_idf::partitions::{
     AppPartitionSubType, PARTITION_TABLE_MAX_LEN, PartitionType,
 };
-use esp_flash_access::partitions::{
+use espbewi_partitions::{
     PartitionRange, erase_range as erase_raw_partition_range, find as find_partition,
 };
 
@@ -84,7 +84,7 @@ where
 {
     let range = find_partition(flash, table_buffer, PartitionType::App(slot.subtype()))
         .map_err(|e| match e {
-            esp_flash_access::partitions::PartitionError::NotFound => PartitionError::NotFound,
+            espbewi_partitions::PartitionError::NotFound => PartitionError::NotFound,
             _ => PartitionError::TableUnreadable,
         })?;
     Ok(AppPartition { slot, offset: range.offset, size: range.size })
@@ -128,8 +128,8 @@ where
         logical_to,
     )
     .map_err(|e| match e {
-        esp_flash_access::partitions::PartitionError::AddressOverflow => FlashWriteError::AddressOverflow,
-        esp_flash_access::partitions::PartitionError::Unaligned => FlashWriteError::Unaligned,
+        espbewi_partitions::PartitionError::AddressOverflow => FlashWriteError::AddressOverflow,
+        espbewi_partitions::PartitionError::Unaligned => FlashWriteError::Unaligned,
         _ => FlashWriteError::Flash,
     })
 }
@@ -138,7 +138,7 @@ where
 /// partition.
 ///
 /// The caller owns the flash object. The common ESP hardware layer is
-/// `esp-storage-manager`; FiBeWI only layers artifact semantics over the
+/// `espbewi`; FiBeWI only layers artifact semantics over the
 /// already-selected partition.
 pub struct EspArtifactStorage<'a, F> {
     flash: &'a mut F,
