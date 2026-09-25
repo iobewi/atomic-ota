@@ -4,7 +4,7 @@
 //!
 //! The crate contains the ESP-specific half of the firmware lifecycle:
 //!
-//! - ESP-IDF OTA partition lookup and NOR-flash artifact writes;
+//! - FiBeWI OTA-slot mapping and artifact writes over esp-storage-manager;
 //! - EWBT/otadata transactional A/B boot state;
 //! - ESP application-image validation.
 //!
