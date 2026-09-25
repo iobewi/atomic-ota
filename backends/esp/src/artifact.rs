@@ -1,8 +1,9 @@
 //! ESP-specific flash backend for [`fibewi`].
 //!
-//! This crate owns only mechanics that are reusable across ESP firmware:
-//! locating ESP-IDF app partitions and turning a NOR flash region into an
-//! [`fibewi::ArtifactStorage`] implementation with erase-block buffering.
+//! This crate adapts FiBeWI firmware semantics to ESP storage. Generic ESP
+//! partition-table access and raw erase mechanics are delegated to
+//! `esp-storage-manager`; this module keeps FiBeWI-specific slot mapping and
+//! the [`fibewi::ArtifactStorage`] erase-block buffering contract.
 //!
 //! It deliberately does **not** own:
 //!
@@ -17,6 +18,9 @@ use embedded_storage::Storage;
 use embedded_storage::nor_flash::NorFlash;
 use esp_bootloader_esp_idf::partitions::{
     AppPartitionSubType, PARTITION_TABLE_MAX_LEN, PartitionType,
+};
+use esp_flash_access::partitions::{
+    PartitionRange, erase_range as erase_raw_partition_range, find as find_partition,
 };
 
 /// Scratch size required by the ESP-IDF partition table parser.
@@ -78,13 +82,12 @@ pub fn find_app_partition<F>(
 where
     F: Storage,
 {
-    let table = esp_bootloader_esp_idf::partitions::read_partition_table(flash, table_buffer)
-        .map_err(|_| PartitionError::TableUnreadable)?;
-    let entry = table
-        .find_partition(PartitionType::App(slot.subtype()))
-        .map_err(|_| PartitionError::TableUnreadable)?
-        .ok_or(PartitionError::NotFound)?;
-    Ok(AppPartition { slot, offset: entry.offset(), size: entry.len() as usize })
+    let range = find_partition(flash, table_buffer, PartitionType::App(slot.subtype()))
+        .map_err(|e| match e {
+            esp_flash_access::partitions::PartitionError::NotFound => PartitionError::NotFound,
+            _ => PartitionError::TableUnreadable,
+        })?;
+    Ok(AppPartition { slot, offset: range.offset, size: range.size })
 }
 
 /// Failure while committing artifact bytes to ESP NOR flash.
@@ -118,37 +121,25 @@ pub fn erase_partition_range<F>(
 where
     F: NorFlash,
 {
-    if logical_to < logical_from {
-        return Err(FlashWriteError::AddressOverflow);
-    }
-
-    let from = usize::try_from(logical_from).map_err(|_| FlashWriteError::AddressOverflow)?;
-    let to = usize::try_from(logical_to).map_err(|_| FlashWriteError::AddressOverflow)?;
-    if from % F::ERASE_SIZE != 0 || to % F::ERASE_SIZE != 0 {
-        return Err(FlashWriteError::Unaligned);
-    }
-    if to > partition.size {
-        return Err(FlashWriteError::AddressOverflow);
-    }
-    if from == to {
-        return Ok(());
-    }
-
-    let base = usize::try_from(partition.offset).map_err(|_| FlashWriteError::AddressOverflow)?;
-    let absolute_from = base.checked_add(from).ok_or(FlashWriteError::AddressOverflow)?;
-    let absolute_to = base.checked_add(to).ok_or(FlashWriteError::AddressOverflow)?;
-    let absolute_from = u32::try_from(absolute_from).map_err(|_| FlashWriteError::AddressOverflow)?;
-    let absolute_to = u32::try_from(absolute_to).map_err(|_| FlashWriteError::AddressOverflow)?;
-
-    flash.erase(absolute_from, absolute_to).map_err(|_| FlashWriteError::Flash)
+    erase_raw_partition_range(
+        flash,
+        PartitionRange { offset: partition.offset, size: partition.size },
+        logical_from,
+        logical_to,
+    )
+    .map_err(|e| match e {
+        esp_flash_access::partitions::PartitionError::AddressOverflow => FlashWriteError::AddressOverflow,
+        esp_flash_access::partitions::PartitionError::Unaligned => FlashWriteError::Unaligned,
+        _ => FlashWriteError::Flash,
+    })
 }
 
 /// Sector-aware [`ArtifactStorage`] over an already-selected ESP app
 /// partition.
 ///
-/// The caller owns the flash object. This is intentional: applications can
-/// coordinate raw flash with NVS through any storage manager they choose.
-/// `fibewi-esp` therefore has no dependency on `esp-storage-manager`.
+/// The caller owns the flash object. The common ESP hardware layer is
+/// `esp-storage-manager`; FiBeWI only layers artifact semantics over the
+/// already-selected partition.
 pub struct EspArtifactStorage<'a, F> {
     flash: &'a mut F,
     partition_offset: u32,
