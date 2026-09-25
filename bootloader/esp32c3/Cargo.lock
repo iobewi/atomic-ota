@@ -3,22 +3,6 @@
 version = 4
 
 [[package]]
-name = "fibewi"
-version = "0.1.0"
-dependencies = [
- "sha2",
-]
-
-[[package]]
-name = "fibewi-esp"
-version = "0.1.0"
-source = "git+https://github.com/iobewi/fibewi?rev=517af8d#517af8d343921fe51fa9a19e411b46b92400ca24"
-dependencies = [
- "fibewi",
- "sha2",
-]
-
-[[package]]
 name = "bitfield"
 version = "0.19.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -288,15 +272,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fibewi-esp-bootloader"
-version = "0.1.0"
-dependencies = [
- "esp-hal",
- "esp-println",
- "fibewi-esp",
-]
-
-[[package]]
 name = "enumset"
 version = "1.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -513,6 +488,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "fibewi"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
+name = "fibewi-esp"
+version = "0.1.0"
+dependencies = [
+ "fibewi",
+ "sha2",
+]
+
+[[package]]
+name = "fibewi-esp-bootloader"
+version = "0.1.0"
+dependencies = [
+ "esp-hal",
+ "esp-println",
+ "fibewi-esp",
+]
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -640,9 +638,9 @@ dependencies = [
 
 [[package]]
 name = "instability"
-version = "0.3.13"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bf84e73fa6f27f299dec58e13223cf70db80da872eb921d4f6138342a0eabc8"
+checksum = "4c3b5acc1e2fd9375041a388da33d1eb8aed5f7a8c0dd3543e3ea2805adfbe20"
 dependencies = [
  "darling 0.24.1",
  "indoc",

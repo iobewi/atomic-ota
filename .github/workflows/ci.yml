@@ -40,13 +40,7 @@ jobs:
         with:
           targets: riscv32imc-unknown-none-elf
           components: rust-src
-      - name: Regenerate bootloader lockfile (diagnostic)
-        run: |
-          cd bootloader/esp32c3
-          cargo generate-lockfile
-          git diff -- Cargo.lock
-          git diff --exit-code Cargo.lock
-          cargo check --release --locked
+      - run: cd bootloader/esp32c3 && cargo check --release --locked
 
 
   exhaustive:
