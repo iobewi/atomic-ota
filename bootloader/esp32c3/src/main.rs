@@ -38,6 +38,7 @@ use fibewi_esp::boot as boot_core;
 use boot_core::image::{self, Verify};
 use boot_core::{BLANK, Boot, Decoded, ENTRY_SIZE, Halt, Op, Raw, Write, decode, plan_boot};
 use esp_println::Printer;
+use espbewi_boot::esp32c3::hw;
 
 /// What `log!` can print. Text and hex only, on purpose: `core::fmt` (Debug,
 /// padding, Unicode tables) costs ~10 KiB, and the whole bootloader has to
@@ -88,37 +89,7 @@ const SLOT_COUNT: u8 = 2;
 
 const MAP: espbewi_platform::MemoryMap = espbewi_platform::chips::esp32c3::BOOT_MEMORY_MAP;
 
-// --- ROM functions (esp32c3.rom.ld, resolved by esp-rom-sys) ---------------
-
-unsafe extern "C" {
-    fn esp_rom_spiflash_read(src_addr: u32, data: *mut u32, len: u32) -> i32;
-    fn esp_rom_spiflash_write(dest_addr: u32, data: *const u32, len: u32) -> i32;
-    fn esp_rom_spiflash_erase_sector(sector_number: u32) -> i32;
-    fn esp_rom_spiflash_unlock() -> i32;
-    fn esp_rom_spiflash_attach(config: u32, legacy: bool);
-    fn esp_rom_spiflash_config_param(
-        device_id: u32,
-        chip_size: u32,
-        block_size: u32,
-        sector_size: u32,
-        page_size: u32,
-        status_mask: u32,
-    ) -> u32;
-    fn ets_efuse_get_spiconfig() -> u32;
-    fn esp_rom_delay_us(us: u32);
-
-    /// The ROM flash driver's state: a *pointer* to `esp_rom_spiflash_legacy_data_t`, whose first member is
-    /// `chip { device_id, chip_size, block_size, sector_size, page_size, status_mask }` (all `u32`).
-    static rom_spiflash_legacy_data: *mut [u32; 6];
-
-    fn Cache_MMU_Init();
-    fn Cache_Enable_ICache(autoload: u32);
-    fn Cache_Suspend_ICache() -> u32;
-    fn Cache_Resume_ICache(autoload: u32);
-    fn Cache_Invalidate_ICache_All();
-    fn Cache_Ibus_MMU_Set(ext_ram: u32, vaddr: u32, paddr: u32, psize: u32, num: u32, fixed: u32) -> i32;
-    fn Cache_Dbus_MMU_Set(ext_ram: u32, vaddr: u32, paddr: u32, psize: u32, num: u32, fixed: u32) -> i32;
-}
+// ESP32-C3 ROM/MMU/watchdog access is provided by espbewi-boot.
 
 enum BootError {
     FlashRead(u32),
@@ -142,24 +113,10 @@ fn le32(b: &[u8], at: usize) -> u32 {
 /// word-aligned offsets, buffers and lengths, so this reads aligned windows
 /// and copies the requested bytes out of them.
 fn flash_read(offset: u32, out: &mut [u8]) -> Result<(), BootError> {
-    let mut done = 0usize;
-    while done < out.len() {
-        let pos = offset + done as u32;
-        let start = pos & !3;
-        let skip = (pos - start) as usize;
-        // 252 + up to 3 bytes of skew fits the 64-word window.
-        let want = (out.len() - done).min(252);
-        let words = (skip + want).div_ceil(4);
-        let mut window = [0u32; 64];
-        let rc = unsafe { esp_rom_spiflash_read(start, window.as_mut_ptr(), (words * 4) as u32) };
-        if rc != 0 {
-            return Err(BootError::FlashRead(start));
-        }
-        let bytes = unsafe { core::slice::from_raw_parts(window.as_ptr().cast::<u8>(), words * 4) };
-        out[done..done + want].copy_from_slice(&bytes[skip..skip + want]);
-        done += want;
-    }
-    Ok(())
+    hw::flash_read(offset, out).map_err(|e| match e {
+        hw::FlashError::Read(at) => BootError::FlashRead(at),
+        _ => BootError::FlashRead(offset),
+    })
 }
 
 /// The image validator reads through this.
@@ -171,53 +128,20 @@ impl image::Read for RomFlash {
     }
 }
 
-/// Flash size in bytes, from the high nibble of byte 3 of our own image header (ESP image format:
-/// 0 = 1 MiB, 1 = 2 MiB, 2 = 4 MiB, 3 = 8 MiB, 4 = 16 MiB, ...).
-fn flash_size_from_header() -> Result<u32, BootError> {
-    let mut header = [0u8; 4];
-    flash_read(0, &mut header)?;
-    Ok(match header[3] >> 4 {
-        0 => 1 << 20,
-        1 => 2 << 20,
-        2 => 4 << 20,
-        3 => 8 << 20,
-        4 => 16 << 20,
-        _ => 4 << 20,
-    })
-}
-
-/// Tells the ROM flash driver how big the chip is. Its default bound is smaller than this layout
-/// (`ota_1` ends past 2 MiB): without this, reading the second slot fails. ESP-IDF's second stage does
-/// the same (`bootloader_flash_update_size`: `rom_spiflash_legacy_data->chip.chip_size = size`).
-/// Found under QEMU: the first A/B boot would otherwise have failed on the device too.
+/// Tell the ROM flash driver how large the physical flash is.
 fn set_flash_size() -> Result<(), BootError> {
-    let size = flash_size_from_header()?;
-    unsafe { (*rom_spiflash_legacy_data)[1] = size };
+    let size = hw::set_flash_size_from_header().map_err(|e| match e {
+        hw::FlashError::Read(at) => BootError::FlashRead(at),
+        _ => BootError::FlashRead(0),
+    })?;
     log!("boot: flash size ", size);
     Ok(())
 }
 
-/// The ROM already attached the flash to read *us*; if its reader still
-/// refuses (state differs from what the ROM boot path left), attach and
-/// configure it the way the ESP-IDF second stage does, sized from our own
-/// image header (flash size lives in the high nibble of byte 3).
+/// Re-attach/configure flash after an early ROM read failure.
 fn flash_reinit() {
-    let mut header = [0u8; 4];
-    let chip_size = match flash_read(0, &mut header) {
-        Ok(()) => match header[3] >> 4 {
-            0 => 1 << 20,
-            1 => 2 << 20,
-            3 => 8 << 20,
-            4 => 16 << 20,
-            _ => 4 << 20,
-        },
-        Err(_) => 4 << 20,
-    };
+    let chip_size = hw::flash_reinit();
     log!("boot: re-attaching flash, chip_size=", chip_size);
-    unsafe {
-        esp_rom_spiflash_attach(ets_efuse_get_spiconfig(), false);
-        esp_rom_spiflash_config_param(0, chip_size, 0x1_0000, 0x1000, 0x100, 0xFFFF);
-    }
 }
 
 /// The three partitions the A/B layout needs: (offset, size) of each.
@@ -268,11 +192,7 @@ fn read_otadata(layout: &Layout) -> Result<[Raw; 2], BootError> {
 
 /// Programs `data` (a multiple of 4 bytes, at a 4-byte-aligned address) through the ROM.
 fn rom_program(at: u32, data: &[u8]) -> bool {
-    let mut words = [0u32; ENTRY_SIZE / 4];
-    for (word, chunk) in words.iter_mut().zip(data.chunks_exact(4)) {
-        *word = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-    }
-    unsafe { esp_rom_spiflash_write(at, words.as_ptr(), data.len() as u32) == 0 }
+    hw::flash_program(at, data).is_ok()
 }
 
 /// Performs one `otadata` entry update with a read-back after every command.
@@ -282,12 +202,12 @@ fn execute(write: Write, layout: &Layout) -> Result<(), BootError> {
     let [erase, body, commit] = write.ops();
     let mut back = [0u8; ENTRY_SIZE];
 
-    if unsafe { esp_rom_spiflash_unlock() } != 0 {
+    if hw::flash_unlock().is_err() {
         return Err(fail(0));
     }
 
     // 0. erase, and see it erased
-    if !matches!(erase, Op::Erase { .. }) || unsafe { esp_rom_spiflash_erase_sector(base / SECTOR) } != 0 {
+    if !matches!(erase, Op::Erase { .. }) || hw::flash_erase_sector(base / SECTOR).is_err() {
         return Err(fail(0));
     }
     flash_read(base, &mut back)?;
@@ -378,35 +298,30 @@ fn load(layout: &Layout, slot: u8) -> Result<core::convert::Infallible, BootErro
     }
 
     // Flash MMU + cache for the DROM/IROM segments.
-    unsafe {
-        Cache_MMU_Init();
-        Cache_Enable_ICache(0);
-        let autoload = Cache_Suspend_ICache();
-        for seg in image.segments().iter().filter(|s| s.len > 0) {
-            let is_drom = MAP.drom.contains(&seg.load);
-            if !(is_drom || MAP.irom.contains(&seg.load)) {
-                continue;
-            }
-            let vaddr = seg.load & !(MAP.mmu_page - 1);
-            let paddr = seg.data_offset & !(MAP.mmu_page - 1);
-            let pages = (seg.len + (seg.load - vaddr)).div_ceil(MAP.mmu_page);
-            let rc = if is_drom {
-                Cache_Dbus_MMU_Set(0, vaddr, paddr, 64, pages, 0)
-            } else {
-                Cache_Ibus_MMU_Set(0, vaddr, paddr, 64, pages, 0)
-            };
-            log!("boot: map ", vaddr, " <- flash ", paddr, " pages=", pages, " rc=", rc as u32);
-            if rc != 0 {
-                return Err(BootError::Mmu(rc));
-            }
+    let autoload = hw::cache_begin_mapping();
+    for seg in image.segments().iter().filter(|s| s.len > 0) {
+        let is_drom = MAP.drom.contains(&seg.load);
+        if !(is_drom || MAP.irom.contains(&seg.load)) {
+            continue;
         }
-        Cache_Invalidate_ICache_All();
-        Cache_Resume_ICache(autoload);
+        let vaddr = seg.load & !(MAP.mmu_page - 1);
+        let paddr = seg.data_offset & !(MAP.mmu_page - 1);
+        let pages = (seg.len + (seg.load - vaddr)).div_ceil(MAP.mmu_page);
+        let rc = if is_drom {
+            hw::map_drom(vaddr, paddr, pages)
+        } else {
+            hw::map_irom(vaddr, paddr, pages)
+        };
+        log!("boot: map ", vaddr, " <- flash ", paddr, " pages=", pages, " rc=", rc as u32);
+        if rc != 0 {
+            return Err(BootError::Mmu(rc));
+        }
     }
+    hw::cache_finish_mapping(autoload);
 
     log!("boot: jump ", image.entry);
     // Let the USB-Serial-JTAG FIFO drain before the application reconfigures it.
-    unsafe { esp_rom_delay_us(50_000) };
+    hw::delay_us(50_000);
     let entry: extern "C" fn() -> ! = unsafe { core::mem::transmute(image.entry as usize) };
     entry()
 }
@@ -444,34 +359,9 @@ fn report(e: &BootError) {
     }
 }
 
-/// Register write-protect unlock key, common to TIMG and RTC_CNTL watchdogs.
-const WDT_WKEY: u32 = 0x50D8_3AA1;
-
-/// The ROM boots from flash with both the main watchdog (TIMG0, MWDT0) and the
-/// RTC watchdog in "flash boot" mode: hardware keeps a watchdog running until
-/// software clears `WDT_FLASHBOOT_MOD_EN`. esp-hal's `Wdt::disable()` only
-/// clears `WDT_EN` (it touches the flashboot bit solely when *enabling*), so
-/// without this the TG0 watchdog resets the chip shortly after the agent
-/// starts -- observed on hardware as `rst:0x7 (TG0WDT_SYS_RST)` in a boot loop.
-/// This is what ESP-IDF's `bootloader_config_wdt` does for the same reason.
-///
-/// Returns the two config registers as they were, for the boot log.
+/// Clear the ROM flash-boot watchdog mode before handing control to the application.
 fn clear_flashboot_watchdogs() -> (u32, u32) {
-    use core::ptr::{read_volatile, write_volatile};
-    // ESP32-C3: TIMG0 0x6001F000 (WDTCONFIG0 +0x48 bit 14, WDTWPROTECT +0x64),
-    // RTC_CNTL 0x60008000 (WDTCONFIG0 +0x90 bit 12, WDTWPROTECT +0xA8).
-    unsafe fn clear_bit(base: usize, config: usize, protect: usize, bit: u32) -> u32 {
-        let cfg = (base + config) as *mut u32;
-        let wprotect = (base + protect) as *mut u32;
-        let before = unsafe { read_volatile(cfg) };
-        unsafe {
-            write_volatile(wprotect, WDT_WKEY);
-            write_volatile(cfg, before & !(1 << bit));
-            write_volatile(wprotect, 0);
-        }
-        before
-    }
-    unsafe { (clear_bit(0x6001_F000, 0x48, 0x64, 14), clear_bit(0x6000_8000, 0x90, 0xA8, 12)) }
+    hw::clear_flashboot_watchdogs()
 }
 
 #[esp_hal::main]
