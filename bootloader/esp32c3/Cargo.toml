@@ -1,0 +1,29 @@
+[workspace]
+
+[package]
+edition = "2024"
+name = "fibewi-esp-bootloader"
+rust-version = "1.88"
+version = "0.1.0"
+license = "MIT"
+description = "FiBeWI second-stage A/B bootloader for ESP32-C3"
+
+[[bin]]
+name = "fibewi-esp-bootloader"
+path = "src/main.rs"
+
+[dependencies]
+esp-hal = { version = "~1.1.0", features = ["esp32c3"] }
+esp-println = { version = "0.17.0", features = ["esp32c3"] }
+fibewi-esp = { path = "../../backends/esp" }
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+opt-level = "s"
+panic = "abort"
+debug = 2
+overflow-checks = false
