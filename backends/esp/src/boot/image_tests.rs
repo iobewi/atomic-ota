@@ -167,6 +167,21 @@ fn structural_damage_is_refused_with_a_reason() {
 }
 
 #[test]
+fn non_empty_zero_load_segment_is_alignment_padding() {
+    let mut b = aligned_builder();
+    b.segments.insert(1, (0, vec![0xA5; 64]));
+
+    let irom_data_offset = 24 + 8 + 300 + 8 + 64 + 8 + 100 + 8 + 64 + 8;
+    b.segments[4].0 = 0x4200_0000 + irom_data_offset;
+    b.entry = b.segments[4].0 + 4;
+
+    let image = b.build();
+    let info = validate_bytes(&image, Verify::Full)
+        .expect("load_addr=0 padding must not be treated as a RAM load");
+    assert_eq!(info.segments()[1].load, 0);
+    assert_eq!(info.segments()[1].len, 64);
+}
+#[test]
 fn magic_and_truncation_are_refused() {
     let mut image = aligned_builder().build();
     image[0] = 0x65;

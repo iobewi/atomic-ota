@@ -186,7 +186,11 @@ pub fn validate(
             return Err(ImageError::SegmentOutsidePartition(i));
         }
         let seg = Segment { load, len, data_offset };
-        if len > 0 {
+        // ESP image tooling may insert a non-empty segment with load_addr=0
+        // purely as file-layout padding so a later flash-mapped segment lands
+        // at the MMU-required page offset. These bytes remain part of the
+        // checksum/hash, but address zero is not a memory load destination.
+        if len > 0 && load != 0 {
             check_segment(&seg, i, map)?;
             let executable = map.irom.contains(&load) || map.iram.contains(&load);
             if executable && entry >= load && entry < load.saturating_add(len) {
