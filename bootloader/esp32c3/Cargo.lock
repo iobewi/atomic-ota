@@ -566,7 +566,7 @@ dependencies = [
 [[package]]
 name = "espbewi-boot"
 version = "0.1.0"
-source = "git+https://github.com/iobewi/espbewi?rev=73b9abfc1cb8c0367e21d873ccef52d01f5bf4f0#73b9abfc1cb8c0367e21d873ccef52d01f5bf4f0"
+source = "git+https://github.com/iobewi/espbewi?rev=bda59c8bec995fe3fdceb52dd3fb3a1744708961#bda59c8bec995fe3fdceb52dd3fb3a1744708961"
 dependencies = [
  "espbewi-platform",
 ]
@@ -574,7 +574,7 @@ dependencies = [
 [[package]]
 name = "espbewi-platform"
 version = "0.1.0"
-source = "git+https://github.com/iobewi/espbewi?rev=73b9abfc1cb8c0367e21d873ccef52d01f5bf4f0#73b9abfc1cb8c0367e21d873ccef52d01f5bf4f0"
+source = "git+https://github.com/iobewi/espbewi?rev=bda59c8bec995fe3fdceb52dd3fb3a1744708961#bda59c8bec995fe3fdceb52dd3fb3a1744708961"
 
 [[package]]
 name = "fibewi"

@@ -14,18 +14,28 @@
  *
  *   vectors_seg 0x403b8000..0x403b8400, IRAM 0x403b8400..0x403d0000
  *     <-> DRAM alias 0x3fcc8000..0x3fce0000
- *   DRAM 0x3fce0000..0x3fd00000  (data, bss, stack growing down from the end)
+ *   DRAM 0x3fce0000..0x3fcec000  (data, bss, stack growing down from the end)
  *
- * Both windows are considerably larger than a straight port of ESP32-C3's
- * boot.x sizing would suggest (0x9000/0x8000 there): a real ESP32-S3 boot
- * with that sizing panicked with a corrupted (empty) panic location --
- * consistent with the stack overflowing into .data/.rodata, not a genuine
- * source-level panic. Xtensa's windowed register ABI spills call frames to
- * the stack on window overflow/underflow, which RISC-V's flat register file
- * never does; a stack budget sized for RISC-V is not automatically enough
- * for Xtensa doing the same job. S3 has ample spare SRAM for this corner
- * (unlike the tight ESP32-C3 the original sizing was tuned for), so there is
- * no real cost to being generous here rather than proving the exact minimum.
+ * DRAM's upper bound is NOT `0x3fd00000` (the chip's real DRAM ceiling): the
+ * ROM's own `rom_spiflash_legacy_data` structure -- read and written by the
+ * ROM SPI flash driver `espbewi-boot` calls into (`set_flash_size_from_header`
+ * writes `rom_spiflash_legacy_data[1]` directly) -- is PROVIDEd by
+ * `esp-rom-sys`'s `esp32s3.rom.ld` at the fixed address `0x3fceffe4`, a mere
+ * 28 bytes below that ceiling. A first ESP32-S3 boot with DRAM sized
+ * `0x3fce0000..0x3fd00000` put the stack (which starts at the region's top
+ * and grows down) directly on top of that address: any call depth past 28
+ * bytes of stack already collided with it, and the ROM's own write to its
+ * struct then landed on live stack content. Symptom on real hardware: the
+ * very first ROM flash call corrupts state and output turns to garbage
+ * immediately after (no clean panic -- a live stack overwritten mid-flight
+ * doesn't unwind cleanly). ESP32-C3's `boot.x` never had this problem only
+ * because its DRAM window (`0x3fcd4000..0x3fcdc000`) already happened to end
+ * a safe `0x3ff0` bytes short of *its* chip's equivalent address
+ * (`0x3fcdfff0`) -- not because the hazard doesn't exist there too, but
+ * because nobody had to reason about it explicitly until the S3 port made it
+ * fatal. This window keeps the same margin below `0x3fceffe4` (`0x3fe4`
+ * bytes) that C3's already had below its own address, rather than reaching
+ * for the chip's true ceiling.
  *
  * Both windows sit inside the top of SRAM, below `boot_window`'s upper bound
  * (0x3fd00000, the top of ESP32-S3's DRAM range) -- that whole span is what
@@ -44,7 +54,7 @@ MEMORY
    * stay adjacent. */
   vectors_seg (RX)  : ORIGIN = 0x403b8000, LENGTH = 0x400
   IRAM        (RWX) : ORIGIN = 0x403b8400, LENGTH = 0x18000 - 0x400
-  DRAM        (RW)  : ORIGIN = 0x3fce0000, LENGTH = 0x20000
+  DRAM        (RW)  : ORIGIN = 0x3fce0000, LENGTH = 0xC000
   RTC_FAST    (RWX) : ORIGIN = 0x600fe000, LENGTH = 0x2000
   /* ESP32-S3's second, larger RTC bank (unlike ESP32-C3, which has only the
    * one above). Declared -- `rtc_slow.x`'s sections need a real region of
