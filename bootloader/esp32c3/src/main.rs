@@ -33,12 +33,20 @@
 #![no_std]
 #![no_main]
 
+#[cfg(not(any(feature = "esp32c3", feature = "esp32s3")))]
+compile_error!("select a supported ESP boot target feature");
+#[cfg(all(feature = "esp32c3", feature = "esp32s3"))]
+compile_error!("select exactly one ESP boot target feature");
+
 use fibewi_esp::boot as boot_core;
 
 use boot_core::image::{self, Verify};
 use boot_core::{BLANK, Boot, Decoded, ENTRY_SIZE, Halt, Op, Raw, Write, decode, plan_boot};
 use esp_println::Printer;
+#[cfg(feature = "esp32c3")]
 use espbewi_boot::esp32c3::hw;
+#[cfg(feature = "esp32s3")]
+use espbewi_boot::esp32s3::hw;
 
 /// What `log!` can print. Text and hex only, on purpose: `core::fmt` (Debug,
 /// padding, Unicode tables) costs ~10 KiB, and the whole bootloader has to
@@ -87,9 +95,12 @@ const SUBTYPE_OTADATA: u8 = 0x00;
 const SECTOR: u32 = 0x1000;
 const SLOT_COUNT: u8 = 2;
 
+#[cfg(feature = "esp32c3")]
 const MAP: espbewi_platform::MemoryMap = espbewi_platform::chips::esp32c3::BOOT_MEMORY_MAP;
+#[cfg(feature = "esp32s3")]
+const MAP: espbewi_platform::MemoryMap = espbewi_platform::chips::esp32s3::BOOT_MEMORY_MAP;
 
-// ESP32-C3 ROM/MMU/watchdog access is provided by espbewi-boot.
+// ROM/MMU/watchdog access is provided by espbewi-boot, per chip.
 
 enum BootError {
     FlashRead(u32),

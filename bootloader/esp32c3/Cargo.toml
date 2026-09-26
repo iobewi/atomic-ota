@@ -12,12 +12,17 @@ description = "FiBeWI second-stage A/B bootloader for ESP32-C3"
 name = "fibewi-esp-bootloader"
 path = "src/main.rs"
 
+[features]
+default = []
+esp32c3 = ["esp-hal/esp32c3", "esp-println/esp32c3", "espbewi-boot/esp32c3"]
+esp32s3 = ["esp-hal/esp32s3", "esp-println/esp32s3", "espbewi-boot/esp32s3"]
+
 [dependencies]
-esp-hal = { version = "~1.1.0", features = ["esp32c3"] }
-esp-println = { version = "0.17.0", features = ["esp32c3"] }
+esp-hal = { version = "~1.1.0" }
+esp-println = { version = "0.17.0" }
 fibewi-esp = { path = "../../backends/esp" }
-espbewi-boot = { git = "https://github.com/iobewi/espbewi", rev = "213c44228c7e24ed62a20bbaab3a822c6cdf6506", package = "espbewi-boot", features = ["esp32c3"] }
-espbewi-platform = { git = "https://github.com/iobewi/espbewi", rev = "213c44228c7e24ed62a20bbaab3a822c6cdf6506", package = "espbewi-platform" }
+espbewi-boot = { git = "https://github.com/iobewi/espbewi", rev = "73b9abfc1cb8c0367e21d873ccef52d01f5bf4f0", package = "espbewi-boot", default-features = false }
+espbewi-platform = { git = "https://github.com/iobewi/espbewi", rev = "73b9abfc1cb8c0367e21d873ccef52d01f5bf4f0", package = "espbewi-platform" }
 
 [profile.dev]
 opt-level = "s"
