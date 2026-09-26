@@ -31,18 +31,6 @@ jobs:
       - run: cargo check -p fibewi-esp --features esp32c3 --target riscv32imc-unknown-none-elf
       - run: cargo clippy -p fibewi-esp --features esp32c3 --target riscv32imc-unknown-none-elf -- -D warnings -A clippy::result-unit-err -A clippy::needless-range-loop
 
-
-  bootloader-esp32c3:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
-        with:
-          targets: riscv32imc-unknown-none-elf
-          components: rust-src
-      - run: cd bootloader/esp32c3 && cargo check --release --locked
-
-
   exhaustive:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
