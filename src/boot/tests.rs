@@ -349,7 +349,7 @@ fn erase_variants(cur: &Flash, s: usize, model: Model, out: &mut HashSet<Flash>)
 
 fn program_variants(cur: &Flash, s: usize, offset: usize, len: usize, data: &[u8], model: Model, thorough: bool, out: &mut HashSet<Flash>) {
     let target: Vec<u8> = (0..len).map(|i| cur[s][offset + i] & data[i]).collect();
-    let mut with = |f: &mut Flash, at: usize, bytes: &[u8]| f[s][offset + at..offset + at + bytes.len()].copy_from_slice(bytes);
+    let with = |f: &mut Flash, at: usize, bytes: &[u8]| f[s][offset + at..offset + at + bytes.len()].copy_from_slice(bytes);
     match model {
         Model::Sequential => {
             for k in 0..len {

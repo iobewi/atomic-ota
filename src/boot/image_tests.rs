@@ -1,5 +1,6 @@
 use super::image::*;
 use alloc::{vec, vec::Vec};
+use std::eprintln;
 use sha2::{Digest, Sha256};
 
 const MAP: MemoryMap = MemoryMap {
