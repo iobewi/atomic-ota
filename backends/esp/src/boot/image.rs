@@ -16,8 +16,33 @@
 //! then padding, one checksum byte (XOR of all segment data, seed 0xEF) as the
 //! last byte of a 16-byte block, then optionally a SHA-256 of everything before it.
 //! ```
-use espbewi_platform::MemoryMap;
+use core::ops::Range;
 use sha2::{Digest, Sha256};
+
+/// Platform-supplied memory geometry used by the pure image validator.
+///
+/// FiBeWI owns this abstract contract because the validator consumes it.
+/// Concrete ESP SoC values belong to the platform layer (for example
+/// `espbewi-platform`) and are adapted by the executable that performs boot.
+#[derive(Clone, Debug)]
+pub struct MemoryMap {
+    pub chip_id: u16,
+    pub drom: Range<u32>,
+    pub irom: Range<u32>,
+    pub iram: Range<u32>,
+    pub dram: Range<u32>,
+    pub rtc: Range<u32>,
+    pub sram_alias_offset: u32,
+    pub boot_window: Range<u32>,
+    pub mmu_page: u32,
+}
+
+impl MemoryMap {
+    pub fn is_flash_mapped(&self, addr: u32) -> bool {
+        self.drom.contains(&addr) || self.irom.contains(&addr)
+    }
+}
+
 
 pub const MAX_SEGMENTS: usize = 16;
 const HEADER_LEN: u32 = 24;

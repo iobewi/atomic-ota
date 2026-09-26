@@ -28,7 +28,6 @@ esp32s3 = [
 
 [dependencies]
 fibewi = { path = "../.." }
-espbewi-platform = { git = "https://github.com/iobewi/espbewi", rev = "bda59c8bec995fe3fdceb52dd3fb3a1744708961", package = "espbewi-platform" }
 sha2 = { version = "0.10", default-features = false }
 embedded-storage = { version = "0.3.1", optional = true }
 esp-bootloader-esp-idf = { version = "0.5.0", default-features = false, optional = true }

@@ -1,8 +1,17 @@
 use super::image::*;
-use espbewi_platform::MemoryMap;
 use sha2::{Digest, Sha256};
 
-const MAP: MemoryMap = espbewi_platform::chips::esp32c3::BOOT_MEMORY_MAP;
+const MAP: MemoryMap = MemoryMap {
+    chip_id: 0x0005,
+    drom: 0x3C00_0000..0x3C80_0000,
+    irom: 0x4200_0000..0x4280_0000,
+    iram: 0x4037_C000..0x403E_0000,
+    dram: 0x3FC8_0000..0x3FCE_0000,
+    rtc: 0x5000_0000..0x5000_2000,
+    sram_alias_offset: 0x0070_0000,
+    boot_window: 0x3FCC_B000..0x3FCE_0000,
+    mmu_page: 0x1_0000,
+};
 const PART_OFFSET: u32 = 0x20000;
 const PART_SIZE: u32 = 0x180000;
 
