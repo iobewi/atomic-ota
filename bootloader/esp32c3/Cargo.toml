@@ -21,8 +21,8 @@ esp32s3 = ["esp-hal/esp32s3", "esp-println/esp32s3", "espbewi-boot/esp32s3"]
 esp-hal = { version = "~1.1.0" }
 esp-println = { version = "0.17.0" }
 fibewi-esp = { path = "../../backends/esp" }
-espbewi-boot = { git = "https://github.com/iobewi/espbewi", rev = "73b9abfc1cb8c0367e21d873ccef52d01f5bf4f0", package = "espbewi-boot", default-features = false }
-espbewi-platform = { git = "https://github.com/iobewi/espbewi", rev = "73b9abfc1cb8c0367e21d873ccef52d01f5bf4f0", package = "espbewi-platform" }
+espbewi-boot = { git = "https://github.com/iobewi/espbewi", rev = "bda59c8bec995fe3fdceb52dd3fb3a1744708961", package = "espbewi-boot", default-features = false }
+espbewi-platform = { git = "https://github.com/iobewi/espbewi", rev = "bda59c8bec995fe3fdceb52dd3fb3a1744708961", package = "espbewi-platform" }
 
 [profile.dev]
 opt-level = "s"

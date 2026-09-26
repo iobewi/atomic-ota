@@ -12,9 +12,20 @@
  * the IRAM alias, data and the stack in the DRAM alias, and the two regions
  * below are chosen so they do NOT cover the same physical bytes:
  *
- *   vectors_seg 0x403cb000..0x403cb400, IRAM 0x403cb400..0x403d4000
- *     <-> DRAM alias 0x3fcdb000..0x3fce4000
- *   DRAM 0x3fcf4000..0x3fcfc000  (data, bss, stack growing down from the end)
+ *   vectors_seg 0x403b8000..0x403b8400, IRAM 0x403b8400..0x403d0000
+ *     <-> DRAM alias 0x3fcc8000..0x3fce0000
+ *   DRAM 0x3fce0000..0x3fd00000  (data, bss, stack growing down from the end)
+ *
+ * Both windows are considerably larger than a straight port of ESP32-C3's
+ * boot.x sizing would suggest (0x9000/0x8000 there): a real ESP32-S3 boot
+ * with that sizing panicked with a corrupted (empty) panic location --
+ * consistent with the stack overflowing into .data/.rodata, not a genuine
+ * source-level panic. Xtensa's windowed register ABI spills call frames to
+ * the stack on window overflow/underflow, which RISC-V's flat register file
+ * never does; a stack budget sized for RISC-V is not automatically enough
+ * for Xtensa doing the same job. S3 has ample spare SRAM for this corner
+ * (unlike the tight ESP32-C3 the original sizing was tuned for), so there is
+ * no real cost to being generous here rather than proving the exact minimum.
  *
  * Both windows sit inside the top of SRAM, below `boot_window`'s upper bound
  * (0x3fd00000, the top of ESP32-S3's DRAM range) -- that whole span is what
@@ -31,9 +42,9 @@ MEMORY
    * `vectors_seg`; carved off the front of the same IRAM window so the vector
    * table and the naked exception handlers it jumps to (call0, short range)
    * stay adjacent. */
-  vectors_seg (RX)  : ORIGIN = 0x403cb000, LENGTH = 0x400
-  IRAM        (RWX) : ORIGIN = 0x403cb400, LENGTH = 0x9000 - 0x400
-  DRAM        (RW)  : ORIGIN = 0x3fcf4000, LENGTH = 0x8000
+  vectors_seg (RX)  : ORIGIN = 0x403b8000, LENGTH = 0x400
+  IRAM        (RWX) : ORIGIN = 0x403b8400, LENGTH = 0x18000 - 0x400
+  DRAM        (RW)  : ORIGIN = 0x3fce0000, LENGTH = 0x20000
   RTC_FAST    (RWX) : ORIGIN = 0x600fe000, LENGTH = 0x2000
   /* ESP32-S3's second, larger RTC bank (unlike ESP32-C3, which has only the
    * one above). Declared -- `rtc_slow.x`'s sections need a real region of
