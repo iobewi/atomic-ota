@@ -50,7 +50,7 @@ semantics, while `espbewi` owns the hardware execution boundary.
 ESP ROM
   -> espbewi-bootloader
        -> espbewi hardware/platform
-       -> fibewi-esp::boot semantics
+       -> fibewi::boot semantics
   -> application
 ```
 
