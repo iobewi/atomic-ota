@@ -15,9 +15,7 @@ jobs:
           toolchain: "1.88.0"
           components: clippy
       - run: cargo test -p fibewi --all-targets
-      - run: cargo test -p fibewi-esp --all-targets
       - run: cargo clippy -p fibewi --lib -- -D warnings
-      - run: cargo clippy -p fibewi-esp --lib -- -D warnings -A clippy::result-unit-err -A clippy::needless-range-loop
 
   exhaustive:
     if: github.event_name == 'workflow_dispatch'
@@ -27,4 +25,4 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.88.0"
-      - run: cargo test -p fibewi-esp --release -- --ignored
+      - run: cargo test -p fibewi --release -- --ignored

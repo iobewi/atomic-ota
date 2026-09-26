@@ -3,14 +3,13 @@
 FiBeWI is a `no_std` firmware lifecycle engine focused on transactional,
 resumable updates and restart-safe A/B activation.
 
-The repository is a workspace with a platform-independent core and platform
-backends:
+The repository contains a single platform-independent `fibewi` crate. ESP hardware adapters live in `espbewi`.
 
 ```text
 fibewi/
-├── src/                  # generic firmware-update core
-└── backends/
-    └── esp/              # ESP slot mapping, EWBT/otadata and image validation
+└── src/
+    ├── artifact / transaction / storage
+    └── boot/              # pure EWBT A/B semantics + ESP image-format validator
 ```
 
 ## Core `fibewi`
@@ -28,24 +27,15 @@ It deliberately does not know about HTTP, TLS, NVS, ESP partition tables,
 bootloader executables, linker layouts, MMU/cache programming, watchdog
 registers, or application configuration.
 
-## Backend `fibewi-esp`
+## Boot semantics
 
-`backends/esp` owns ESP-specific firmware lifecycle semantics:
+FiBeWI owns the pure, host-testable parts of the firmware lifecycle:
 
-- mapping FiBeWI `ota_0` / `ota_1` slots onto partitions located by `espbewi`;
-- FiBeWI artifact buffering/writes over the common ESP raw-storage primitives;
-- the EWBT transactional `otadata` format and its power-cut-safe state machine;
-- ESP application-image structural/checksum/SHA-256 validation;
-- the pure boot decision layer consumed by platform bootloader executors.
+- EWBT transactional `otadata` encoding and A/B state transitions;
+- slot-selection, activation, confirmation and rollback decisions;
+- ESP application-image parsing and validation against a caller-supplied abstract `MemoryMap`.
 
-The update transaction state and the boot trust state remain separate state
-machines even though they live in the same repository.
-
-The ESP backend does not own the physical flash capability, generic ESP
-partition-table/raw erase primitives, NVS configuration, ROM flash calls,
-MMU/cache setup, watchdog handling, linker scripts, or the second-stage
-bootloader executable. Those hardware execution responsibilities belong to
-`espbewi`.
+FiBeWI does **not** own ESP flash drivers, partition-table access, concrete SoC memory maps, NVS, ROM calls, MMU/cache setup, watchdog handling, linker scripts, or an ESP bootloader executable. Those responsibilities belong to `espbewi`.
 
 ## Bootloader ownership
 
@@ -70,23 +60,14 @@ Host tests:
 
 ```sh
 cargo test -p fibewi
-cargo test -p fibewi-esp
 ```
 
-ESP backend compile gate:
-
-```sh
-cargo check -p fibewi-esp --features esp32c3 --target riscv32imc-unknown-none-elf
-```
-
-The `fibewi-esp` host suite includes the adversarial EWBT power-cut model
+The FiBeWI host suite includes the adversarial EWBT power-cut model
 imported from the former `atomic-boot` repository.
 
 ## Status
 
-Pre-stable. FiBeWI consolidates the former `atomic-ota`, `atomic-boot`, and
-`atomic-ota-esp` lifecycle responsibilities while keeping hardware execution
-outside the repository.
+Pre-stable. FiBeWI owns transactional firmware lifecycle semantics and pure boot-policy/image-validation logic while all concrete ESP hardware execution remains outside the repository.
 
 ## License
 

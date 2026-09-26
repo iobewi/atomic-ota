@@ -24,9 +24,10 @@
 //!   *decoded* numbers; parsing a header into them is the caller's job.
 //! * flash mechanics (sectors, erase/program, alignment/padding) -- backend
 //!   detail, behind [`storage::ArtifactStorage`].
-//! * the EWBT `otadata` entry format, or any other A/B slot-trust encoding
-//!   -- that lives one layer below the "which target is currently
-//!   confirmed" fact this crate consumes as [`state::BackendOutcome`].
+//! * concrete bootloader execution, partition lookup, flash I/O, MMU/cache,
+//!   watchdogs, or SoC memory geometry -- those belong to the platform layer.
+//!   FiBeWI does own the pure EWBT/A-B decision semantics and ESP image-format
+//!   validator contracts exposed by [`boot`].
 //! * a decision of *what* a "target" is (a flash slot, a container tag, a
 //!   block device, ...) -- opaque to this crate, carried as the `Target`
 //!   type parameter of [`transaction::TransactionRecord`].
@@ -41,6 +42,7 @@
 extern crate alloc;
 
 pub mod artifact;
+pub mod boot;
 pub mod error;
 pub mod state;
 pub mod storage;

@@ -9,7 +9,7 @@ repository = "https://github.com/iobewi/fibewi"
 readme = "README.md"
 
 [workspace]
-members = [".", "backends/esp"]
+members = ["."]
 resolver = "3"
 
 [dependencies]
