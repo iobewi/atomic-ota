@@ -1,4 +1,5 @@
 use super::image::*;
+use alloc::{vec, vec::Vec};
 use sha2::{Digest, Sha256};
 
 const MAP: MemoryMap = MemoryMap {
