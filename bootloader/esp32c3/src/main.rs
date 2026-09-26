@@ -377,18 +377,9 @@ fn clear_flashboot_watchdogs() -> (u32, u32) {
 
 #[esp_hal::main]
 fn main() -> ! {
-    // DIAGNOSTIC (ESP32-S3 bring-up): the very first log line after
-    // esp_hal::init() (below) never appeared on real hardware even though
-    // the panic handler's own later output does -- bracketing checkpoints,
-    // not relying on PanicInfo::location() (which itself printed an empty
-    // file + line 0, uninformative), to find out how far execution actually
-    // gets before whatever crashes.
-    log!("\r\ncheckpoint 0: main() entered");
     // First thing: the ROM's watchdogs are already ticking.
     let (tg0_wdt, rtc_wdt) = clear_flashboot_watchdogs();
-    log!("checkpoint 1: flashboot watchdogs cleared");
     esp_hal::init(esp_hal::Config::default());
-    log!("checkpoint 2: esp_hal::init() returned");
     log!("\r\nembewi-boot ", env!("CARGO_PKG_VERSION"), " (otadata bootstrap; no rollback yet)");
     log!("boot: wdt tg0=", tg0_wdt, " rtc=", rtc_wdt, " (flashboot bits cleared)");
     // `boot` only ever returns on failure (success ends in a jump).
@@ -402,10 +393,9 @@ fn main() -> ! {
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    // DIAGNOSTIC (ESP32-S3 bring-up): file+line only, via the existing
-    // `Loggable` impls for `&str`/`u32` -- no `core::fmt` formatting of the
-    // panic message itself, so this stays inside the "text and hex only"
-    // code-size budget `log!` was built for.
+    // File+line only, via the existing `Loggable` impls for `&str`/`u32` --
+    // no `core::fmt` formatting of the panic message itself, so this stays
+    // inside the "text and hex only" code-size budget `log!` was built for.
     if let Some(loc) = info.location() {
         log!("boot: PANIC at ", loc.file(), ":", loc.line());
     } else {
