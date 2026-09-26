@@ -392,8 +392,16 @@ fn main() -> ! {
 }
 
 #[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    log!("boot: PANIC");
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    // DIAGNOSTIC (ESP32-S3 bring-up): file+line only, via the existing
+    // `Loggable` impls for `&str`/`u32` -- no `core::fmt` formatting of the
+    // panic message itself, so this stays inside the "text and hex only"
+    // code-size budget `log!` was built for.
+    if let Some(loc) = info.location() {
+        log!("boot: PANIC at ", loc.file(), ":", loc.line());
+    } else {
+        log!("boot: PANIC");
+    }
     loop {
         core::hint::spin_loop();
     }
